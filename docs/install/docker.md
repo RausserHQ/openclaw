@@ -44,6 +44,18 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw).
     Common tags: `main`, `latest`, `<version>` (e.g. `2026.2.26`).
 
+    The RausserHQ fork publishes fork images to `ghcr.io/rausserhq/openclaw`.
+    Inspect the digest for a published tag before pinning it in deployment
+    manifests:
+
+    ```bash
+    docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:main
+    ```
+
+    Use the reported `Digest:` value as
+    `ghcr.io/rausserhq/openclaw@sha256:<digest>` when you need an immutable
+    image reference.
+
   </Step>
 
   <Step title="Complete onboarding">
