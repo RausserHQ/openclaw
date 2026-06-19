@@ -85,6 +85,9 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     manifests:
 
     ```bash
+    docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:baseline
+
+    # The default-branch image is also available as :main after main publishes.
     docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:main
     ```
 
