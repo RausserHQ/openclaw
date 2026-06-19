@@ -33,6 +33,7 @@ type SlackRoutingContext = {
   threadContext: ReturnType<typeof resolveSlackThreadContext>;
   threadTs: string | undefined;
   isThreadReply: boolean;
+  routedThreadId: string | undefined;
   threadKeys: ReturnType<typeof resolveThreadSessionKeys>;
   sessionKey: string;
   historyKey: string;
@@ -149,6 +150,22 @@ function resolveSlackInitialAgentRoute(params: {
   });
 }
 
+function resolveSlackRoomThreadId(params: {
+  isRoom: boolean;
+  isThreadReply: boolean;
+  threadTs?: string;
+  incomingThreadTs?: string;
+  messageTs?: string;
+}): string | undefined {
+  if (!params.isRoom) {
+    return undefined;
+  }
+  if (params.isThreadReply) {
+    return params.threadTs;
+  }
+  return params.incomingThreadTs ?? params.messageTs;
+}
+
 export function resolveSlackRoutingContext(params: {
   ctx: SlackRoutingContextDeps;
   account: ResolvedSlackAccount;
@@ -158,7 +175,6 @@ export function resolveSlackRoutingContext(params: {
   isRoom: boolean;
   isRoomish: boolean;
   channelConfig?: SlackChannelConfigResolved | null;
-  seedTopLevelRoomThread?: boolean;
   assistantThreadTs?: string;
 }): SlackRoutingContext {
   const {
@@ -170,7 +186,6 @@ export function resolveSlackRoutingContext(params: {
     isRoom,
     isRoomish,
     channelConfig,
-    seedTopLevelRoomThread,
     assistantThreadTs,
   } = params;
   let route = resolveSlackInitialAgentRoute({
@@ -193,22 +208,16 @@ export function resolveSlackRoutingContext(params: {
     !isThreadReply && replyToMode === "all" && threadContext.messageTs
       ? threadContext.messageTs
       : undefined;
-  // Keep ordinary top-level room messages on the per-channel session for
-  // continuity, but preserve Slack thread identity when the event already has
-  // one or when an actionable app mention will seed a reply thread.
-  // This keeps a thread root and its later replies on one parent session
-  // without returning to the old "every channel message is its own thread"
-  // behavior (regression from #10686).
-  const seedCandidateThreadId = threadContext.incomingThreadTs ?? threadContext.messageTs;
-  const seededRoomThreadId =
-    !isThreadReply &&
-    isRoom &&
-    seedTopLevelRoomThread &&
-    replyToMode !== "off" &&
-    seedCandidateThreadId
-      ? seedCandidateThreadId
-      : undefined;
   const roomThreadId = isThreadReply && threadTs ? threadTs : undefined;
+  // Slack channel conversations are root-thread scoped: a top-level message
+  // owns its response thread/session, and replies reuse the parent thread_ts.
+  const channelThreadId = resolveSlackRoomThreadId({
+    isRoom,
+    isThreadReply,
+    threadTs,
+    incomingThreadTs: threadContext.incomingThreadTs,
+    messageTs: threadContext.messageTs,
+  });
   const assistantThreadId = assistantThreadTs;
   // DM threads are a UI affordance, not a session boundary. Route all DM
   // messages, including thread replies, to the user's main DM session so
@@ -217,12 +226,14 @@ export function resolveSlackRoutingContext(params: {
   // conversation and sends the lifecycle context only on assistant events.
   const canonicalThreadId = isDirectMessage
     ? assistantThreadId
-    : isRoomish
-      ? roomThreadId
-      : isThreadReply
-        ? threadTs
-        : autoThreadId;
-  const routedThreadId = canonicalThreadId ?? (isRoomish ? seededRoomThreadId : undefined);
+    : isRoom
+      ? channelThreadId
+      : isRoomish
+        ? roomThreadId
+        : isThreadReply
+          ? threadTs
+          : autoThreadId;
+  const routedThreadId = canonicalThreadId;
   const baseConversationId = resolveSlackBaseConversationId({ message, isDirectMessage });
   const runtimeBindingThreadId =
     routedThreadId ?? (isDirectMessage && isThreadReply ? threadTs : undefined);
@@ -290,6 +301,7 @@ export function resolveSlackRoutingContext(params: {
     threadContext,
     threadTs,
     isThreadReply,
+    routedThreadId,
     threadKeys,
     sessionKey,
     historyKey,

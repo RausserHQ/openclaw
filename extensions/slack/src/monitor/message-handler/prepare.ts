@@ -35,7 +35,6 @@ import {
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/system-event-runtime";
-import { resolveSlackReplyToMode } from "../../account-reply-mode.js";
 import type { ResolvedSlackAccount } from "../../accounts.js";
 import { reactSlackMessage } from "../../actions.js";
 import { formatSlackError } from "../../errors.js";
@@ -696,19 +695,7 @@ export async function prepareSlackMessage(params: {
       hasSubteamMention: mentionMetadata.hasSubteamMention,
       source: opts.source,
     });
-  // Channels with `requireMention: false` and a non-`off` reply mode produce
-  // a Slack-side thread on every top-level bot reply (because `replyToMode`
-  // creates one). Seed thread routing for the root turn too, so the inbound
-  // root and its later thread replies share one parent session — same way
-  // app_mention / explicitly mentioned roots already do. Without this gate,
-  // the root lands on the channel session while later thread replies land on
-  // a fresh `:thread:<root_ts>` session, breaking continuity.
   const channelRequireMention = channelConfig?.requireMention ?? ctx.defaultRequireMention ?? true;
-  const channelChatType: "direct" | "group" | "channel" = isDirectMessage
-    ? "direct"
-    : isGroupDm
-      ? "group"
-      : "channel";
   const restoredAssistantThreadContext = await restoredAssistantThreadContextPromise;
   const assistantThreadContext = mergeSlackAssistantThreadContext(
     messageAssistantThreadContext,
@@ -721,16 +708,7 @@ export async function prepareSlackMessage(params: {
   if (assistantThreadContextToCache) {
     ctx.saveSlackAssistantThreadContext(assistantThreadContextToCache);
   }
-  const channelReplyToMode =
-    channelConfig?.replyToMode ?? resolveSlackReplyToMode(account, channelChatType);
-  const willImplicitlyThreadReply =
-    isRoom && !channelRequireMention && channelReplyToMode !== "off";
-  const seedTopLevelRoomThreadBySource =
-    opts.source === "app_mention" ||
-    opts.wasMentioned === true ||
-    explicitlyMentioned ||
-    willImplicitlyThreadReply;
-  let routing = resolveSlackRoutingContext({
+  const routing = resolveSlackRoutingContext({
     ctx,
     account,
     message,
@@ -739,7 +717,6 @@ export async function prepareSlackMessage(params: {
     isRoom,
     isRoomish,
     channelConfig,
-    seedTopLevelRoomThread: seedTopLevelRoomThreadBySource,
     assistantThreadTs: assistantThreadContext?.threadTs,
   });
 
@@ -761,35 +738,8 @@ export async function prepareSlackMessage(params: {
       conversationId: message.channel,
       providerPolicy: account.config.mentionPatterns,
     });
-  let mentionRegexes = buildPolicyMentionRegexes(routing.route.agentId);
-  let wasMentioned = resolveWasMentioned(mentionRegexes);
-  const hasBoundSession = Boolean(
-    routing.runtimeBoundSessionKey || routing.configuredBindingSessionKey,
-  );
-  // Runtime bindings already pin the root and later thread replies to the same
-  // target session, so only unbound regex mentions need a seeded thread reroute.
-  if (
-    !seedTopLevelRoomThreadBySource &&
-    wasMentioned &&
-    isRoom &&
-    !routing.isThreadReply &&
-    !hasBoundSession
-  ) {
-    routing = resolveSlackRoutingContext({
-      ctx,
-      account,
-      message,
-      isDirectMessage,
-      isGroupDm,
-      isRoom,
-      isRoomish,
-      channelConfig,
-      seedTopLevelRoomThread: true,
-      assistantThreadTs: assistantThreadContext?.threadTs,
-    });
-    mentionRegexes = buildPolicyMentionRegexes(routing.route.agentId);
-    wasMentioned = resolveWasMentioned(mentionRegexes);
-  }
+  const mentionRegexes = buildPolicyMentionRegexes(routing.route.agentId);
+  const wasMentioned = resolveWasMentioned(mentionRegexes);
   const {
     route,
     runtimeBinding,
@@ -799,6 +749,7 @@ export async function prepareSlackMessage(params: {
     threadContext,
     threadTs,
     isThreadReply,
+    routedThreadId,
     threadKeys,
     sessionKey,
     historyKey,
@@ -1321,8 +1272,10 @@ export async function prepareSlackMessage(params: {
   const commandBody = textForCommandDetection.trim();
   const supplementalThreadHistoryBody =
     directThreadRoutedToDmSession && !threadHistoryBody ? threadStarterBody : threadHistoryBody;
+  const channelReplyThreadTs = isRoom ? routedThreadId : undefined;
   const effectiveMessageThreadId =
-    assistantThreadContext?.threadTs ?? threadContext.messageThreadId;
+    channelReplyThreadTs ??
+    (!isRoom ? (assistantThreadContext?.threadTs ?? threadContext.messageThreadId) : undefined);
 
   const ctxPayload = buildChannelInboundEventContext({
     channel: "slack",
@@ -1521,7 +1474,9 @@ export async function prepareSlackMessage(params: {
           : undefined,
     },
     replyToMode,
-    ...(forcedAssistantReplyThreadTs ? { forcedReplyThreadTs: forcedAssistantReplyThreadTs } : {}),
+    ...(channelReplyThreadTs || forcedAssistantReplyThreadTs
+      ? { forcedReplyThreadTs: channelReplyThreadTs ?? forcedAssistantReplyThreadTs }
+      : {}),
     ...(assistantThreadContext
       ? { slackMessageMetadata: buildSlackAssistantThreadMetadata(assistantThreadContext) }
       : {}),

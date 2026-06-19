@@ -323,6 +323,7 @@ function createPreparedSlackMessage(params?: {
   }>;
   channelConfig?: Record<string, unknown> | null;
   replyToMode?: "off" | "first" | "all" | "batched";
+  forcedReplyThreadTs?: string;
   isDirectMessage?: boolean;
   route?: Partial<{
     agentId: string;
@@ -396,6 +397,7 @@ function createPreparedSlackMessage(params?: {
       record: {},
     },
     replyToMode: params?.replyToMode ?? "all",
+    ...(params?.forcedReplyThreadTs ? { forcedReplyThreadTs: params.forcedReplyThreadTs } : {}),
     isDirectMessage: params?.isDirectMessage ?? false,
     isRoomish: false,
     historyKey: "history-key",
@@ -1306,14 +1308,20 @@ describe("dispatchPreparedSlackMessage preview fallback", () => {
     expect(deliverRepliesMock).not.toHaveBeenCalled();
   });
 
-  it("does not create a Slack thread for top-level messages when replyToMode is off", async () => {
+  it("uses the forced channel root thread for top-level messages when replyToMode is off", async () => {
     mockedSlackStreamingMode = "off";
     mockedSlackIsThreadReply = false;
 
-    await dispatchPreparedSlackMessage(createPreparedSlackMessage({ replyToMode: "off" }));
+    await dispatchPreparedSlackMessage(
+      createPreparedSlackMessage({
+        replyToMode: "off",
+        forcedReplyThreadTs: THREAD_TS,
+        message: { thread_ts: undefined },
+      }),
+    );
 
     expect(deliverRepliesMock).toHaveBeenCalledTimes(1);
-    expectDeliverReplyCall(0, FINAL_REPLY_TEXT, { replyThreadTs: undefined });
+    expectDeliverReplyCall(0, FINAL_REPLY_TEXT, { replyThreadTs: THREAD_TS });
   });
 
   it("stays in an existing Slack thread when replyToMode is off", async () => {
