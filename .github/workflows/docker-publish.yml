@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - rausser/v2026.6.6-upstream-baseline
     tags:
       - "rausser-*"
   workflow_dispatch:
@@ -72,6 +73,9 @@ jobs:
           if [[ "${SOURCE_REF}" == "refs/heads/main" ]]; then
             tags+=("${IMAGE_NAME}:main")
           fi
+          if [[ "${SOURCE_REF}" == "refs/heads/rausser/v2026.6.6-upstream-baseline" ]]; then
+            tags+=("${IMAGE_NAME}:baseline")
+          fi
           if [[ "${SOURCE_REF}" == refs/tags/rausser-* ]]; then
             tags+=("${IMAGE_NAME}:${SOURCE_REF_NAME}")
           fi
@@ -92,6 +96,9 @@ jobs:
           version="${GITHUB_SHA}"
           if [[ "${SOURCE_REF}" == "refs/heads/main" ]]; then
             version="main"
+          fi
+          if [[ "${SOURCE_REF}" == "refs/heads/rausser/v2026.6.6-upstream-baseline" ]]; then
+            version="baseline"
           fi
           if [[ "${SOURCE_REF}" == refs/tags/rausser-* ]]; then
             version="${SOURCE_REF_NAME}"
