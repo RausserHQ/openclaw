@@ -1,4 +1,5 @@
 // Gateway Protocol tests cover cron validators behavior.
+import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   validateCronAddParams,
@@ -9,6 +10,7 @@ import {
   validateCronRunsParams,
   validateCronUpdateParams,
 } from "./index.js";
+import { CronRunLogEntrySchema } from "./schema/cron.js";
 
 /**
  * Cron validator regressions for public scheduler RPC payloads.
@@ -305,6 +307,20 @@ describe("cron protocol validators", () => {
     ).toBe(true);
     expect(validateCronRunsParams({ id: "job-1", offset: -1 })).toBe(false);
     expect(validateCronRunsParams({ id: "job-1", runId: "" })).toBe(false);
+  });
+
+  it("accepts scheduled-report detail fields on run-log entries", () => {
+    expect(
+      Value.Check(CronRunLogEntrySchema, {
+        ts: 1,
+        jobId: "job-1",
+        action: "finished",
+        status: "ok",
+        summary: "compact report",
+        reportDetails: "full report body",
+        reportEnvelopeError: "invalid envelope",
+      }),
+    ).toBe(true);
   });
 
   it("accepts all-scope runs with multi-select filters", () => {

@@ -324,9 +324,26 @@ function assertMainSessionAgentId(
   }
 }
 
-function assertDeliverySupport(job: Pick<CronJob, "sessionTarget" | "delivery">) {
+function assertDeliverySupport(job: Pick<CronJob, "sessionTarget" | "delivery" | "payload">) {
   if (!job.delivery) {
     return;
+  }
+  if (job.delivery.presentation?.mode === "threaded_report") {
+    if (job.payload.kind !== "command") {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" requires payload.kind="command"',
+      );
+    }
+    if (job.delivery.mode !== "announce") {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" requires delivery.mode="announce"',
+      );
+    }
+    if (job.delivery.threadId !== undefined && job.delivery.threadId !== null) {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" cannot be combined with delivery.threadId',
+      );
+    }
   }
   // No primary delivery and no completion webhook -- nothing to validate.
   if (job.delivery.mode === "none" && !job.delivery.completionDestination) {
@@ -849,11 +866,16 @@ export function applyJobPatch(
   if (patch.wakeMode) {
     job.wakeMode = patch.wakeMode;
   }
+  const deliveryPatchHasPresentation =
+    patch.delivery !== undefined && Object.hasOwn(patch.delivery, "presentation");
   if (patch.payload) {
     job.payload = mergeCronPayload(job.payload, patch.payload);
   }
   if (patch.delivery) {
     job.delivery = mergeCronDelivery(job.delivery, patch.delivery);
+  }
+  if (patch.payload && job.payload.kind !== "command" && !deliveryPatchHasPresentation) {
+    clearThreadedReportPresentation(job);
   }
   if ("failureAlert" in patch) {
     job.failureAlert = mergeCronFailureAlert(job.failureAlert, patch.failureAlert);
@@ -1018,11 +1040,18 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
   };
 }
 
+function clearThreadedReportPresentation(job: CronJob) {
+  if (job.delivery?.presentation?.mode === "threaded_report") {
+    job.delivery = { ...job.delivery, presentation: undefined };
+  }
+}
+
 function mergeCronDelivery(
   existing: CronDelivery | undefined,
   patch: CronDeliveryPatch,
 ): CronDelivery | undefined {
   const hasCompletionDestinationPatch = "completionDestination" in patch;
+  const hasPresentationPatch = "presentation" in patch;
   const next: CronDelivery = {
     mode: existing?.mode ?? "none",
     channel: existing?.channel,
@@ -1032,6 +1061,7 @@ function mergeCronDelivery(
     bestEffort: existing?.bestEffort,
     completionDestination: existing?.completionDestination,
     failureDestination: existing?.failureDestination,
+    presentation: existing?.presentation,
   };
 
   if (typeof patch.mode === "string") {
@@ -1049,6 +1079,9 @@ function mergeCronDelivery(
     }
     if (!hasCompletionDestinationPatch && (next.mode === "none" || next.mode === "webhook")) {
       next.completionDestination = undefined;
+    }
+    if (!hasPresentationPatch && next.mode !== "announce") {
+      next.presentation = undefined;
     }
   }
   if ("channel" in patch) {
@@ -1076,6 +1109,10 @@ function mergeCronDelivery(
         ...(to ? { to } : {}),
       };
     }
+  }
+  if (hasPresentationPatch) {
+    next.presentation =
+      patch.presentation?.mode === "threaded_report" ? { mode: "threaded_report" } : undefined;
   }
   if ("failureDestination" in patch) {
     if (patch.failureDestination == null) {
@@ -1135,7 +1172,8 @@ function mergeCronDelivery(
     next.accountId === undefined &&
     next.bestEffort === undefined &&
     next.completionDestination === undefined &&
-    next.failureDestination === undefined
+    next.failureDestination === undefined &&
+    next.presentation === undefined
   ) {
     // Clearing an absent override must preserve implicit detached-job delivery.
     return undefined;

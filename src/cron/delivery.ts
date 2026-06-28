@@ -1,4 +1,5 @@
 /** Sends cron announce payloads and best-effort failure notifications. */
+import { resolveMessageReceiptPrimaryId } from "../channels/message/receipt.js";
 import { sendDurableMessageBatch } from "../channels/message/runtime.js";
 import type { CliDeps } from "../cli/deps.types.js";
 import { createOutboundSendDeps } from "../cli/outbound-send-deps.js";
@@ -104,25 +105,55 @@ async function deliverCronAnnouncePayload(params: {
     identity: ReturnType<typeof resolveAgentOutboundIdentity>;
   };
   message: string;
+  detailsMessage?: string;
   abortSignal: AbortSignal;
 }): Promise<void> {
+  const outboundDeps = createOutboundSendDeps(params.deps);
   // Cron delivery is durable and non-best-effort for primary announces; partial
   // channel failure must surface as a cron run failure.
-  const send = await sendDurableMessageBatch({
+  const rootSend = await sendDurableMessageBatch({
     cfg: params.cfg,
     channel: params.delivery.resolvedTarget.channel,
     to: params.delivery.resolvedTarget.to,
     accountId: params.delivery.resolvedTarget.accountId,
-    threadId: params.delivery.resolvedTarget.threadId,
+    threadId: params.detailsMessage ? undefined : params.delivery.resolvedTarget.threadId,
     payloads: [{ text: params.message }],
     session: params.delivery.session,
     identity: params.delivery.identity,
     bestEffort: false,
-    deps: createOutboundSendDeps(params.deps),
+    deps: outboundDeps,
     signal: params.abortSignal,
   });
-  if (send.status === "failed" || send.status === "partial_failed") {
-    throw send.error;
+  if (rootSend.status === "failed" || rootSend.status === "partial_failed") {
+    throw rootSend.error;
+  }
+  if (!params.detailsMessage) {
+    return;
+  }
+
+  // Threaded reports require the channel adapter to return a stable root
+  // receipt id. If the adapter cannot prove where the root landed, fail closed
+  // instead of guessing a thread target or dumping the detailed report top-level.
+  const rootMessageId = resolveMessageReceiptPrimaryId(rootSend.receipt);
+  if (!rootMessageId) {
+    throw new Error("cron threaded report delivery could not resolve root message id");
+  }
+
+  const detailsSend = await sendDurableMessageBatch({
+    cfg: params.cfg,
+    channel: params.delivery.resolvedTarget.channel,
+    to: params.delivery.resolvedTarget.to,
+    accountId: params.delivery.resolvedTarget.accountId,
+    threadId: rootMessageId,
+    payloads: [{ text: params.detailsMessage }],
+    session: params.delivery.session,
+    identity: params.delivery.identity,
+    bestEffort: false,
+    deps: outboundDeps,
+    signal: params.abortSignal,
+  });
+  if (detailsSend.status === "failed" || detailsSend.status === "partial_failed") {
+    throw detailsSend.error;
   }
 }
 
@@ -134,6 +165,7 @@ export async function sendCronAnnouncePayloadStrict(params: {
   jobId: string;
   target: CronAnnounceTarget;
   message: string;
+  detailsMessage?: string;
   abortSignal: AbortSignal;
 }): Promise<void> {
   const delivery = await resolveCronAnnounceDelivery(params);
@@ -145,6 +177,7 @@ export async function sendCronAnnouncePayloadStrict(params: {
     cfg: params.cfg,
     delivery,
     message: params.message,
+    detailsMessage: params.detailsMessage,
     abortSignal: params.abortSignal,
   });
 }

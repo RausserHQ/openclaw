@@ -186,6 +186,8 @@ describe("cron run log", () => {
           status: "error",
           error: "nope",
           summary: "oops",
+          reportDetails: "full scheduled report",
+          reportEnvelopeError: "invalid scheduled-report envelope",
         },
       });
       await appendCronRunLog({
@@ -236,6 +238,8 @@ describe("cron run log", () => {
         })
       ).entries;
       expect(onlyB[0]?.summary).toBe("oops");
+      expect(onlyB[0]?.reportDetails).toBe("full scheduled report");
+      expect(onlyB[0]?.reportEnvelopeError).toBe("invalid scheduled-report envelope");
 
       expect(
         (
@@ -304,6 +308,8 @@ describe("cron run log", () => {
             delivered: true,
             deliveryStatus: "not-delivered",
             deliveryError: "announce failed",
+            reportDetails: "detailed scheduled report",
+            reportEnvelopeError: "bad report envelope",
             failureNotificationDelivery: {
               delivered: true,
               status: "delivered",
@@ -330,6 +336,8 @@ describe("cron run log", () => {
       expect(entries[0]?.delivered).toBe(true);
       expect(entries[0]?.deliveryStatus).toBe("not-delivered");
       expect(entries[0]?.deliveryError).toBe("announce failed");
+      expect(entries[0]?.reportDetails).toBe("detailed scheduled report");
+      expect(entries[0]?.reportEnvelopeError).toBe("bad report envelope");
       expect(entries[0]?.failureNotificationDelivery).toEqual({
         delivered: true,
         status: "delivered",

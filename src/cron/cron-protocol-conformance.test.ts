@@ -125,5 +125,7 @@ describe("cron protocol conformance", () => {
     const errorReason = runLogProperties.errorReason as SchemaLike | undefined;
     expect(errorReason).toBeDefined();
     expect(extractConstUnionValues(errorReason ?? {})).toEqual(expectedReasons);
+    expect(runLogProperties.reportDetails).toBeDefined();
+    expect(runLogProperties.reportEnvelopeError).toBeDefined();
   });
 });

@@ -74,7 +74,10 @@ export function parseCronRunLogEntryObject(
     status: entryObj.status,
     error: normalizedError,
     errorReason: normalizedErrorReason,
-    summary: entryObj.summary,
+    summary: typeof entryObj.summary === "string" ? entryObj.summary : undefined,
+    reportDetails: typeof entryObj.reportDetails === "string" ? entryObj.reportDetails : undefined,
+    reportEnvelopeError:
+      typeof entryObj.reportEnvelopeError === "string" ? entryObj.reportEnvelopeError : undefined,
     runId: typeof entryObj.runId === "string" && entryObj.runId.trim() ? entryObj.runId : undefined,
     diagnostics: normalizeCronRunDiagnostics(entryObj.diagnostics),
     runAtMs: entryObj.runAtMs,
