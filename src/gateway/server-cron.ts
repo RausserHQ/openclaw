@@ -133,6 +133,45 @@ function pickDefined<T extends Record<string, unknown>>(
   return result;
 }
 
+export function buildCronThreadedReportDeliveryPayload(params: {
+  jobName: string;
+  result: {
+    status: string;
+    error?: string;
+    summary?: string;
+    reportDetails?: string;
+    reportEnvelopeError?: string;
+  };
+}): { message: string; detailsMessage: string } {
+  const detailsMessage =
+    params.result.reportDetails ??
+    params.result.summary ??
+    params.result.error ??
+    "No report details were captured.";
+  const summary = params.result.summary?.trim();
+
+  if (params.result.reportEnvelopeError) {
+    return {
+      message: `Cron job "${params.jobName}" produced an invalid scheduled report envelope. Details in thread.`,
+      detailsMessage,
+    };
+  }
+  if (params.result.status === "error") {
+    return {
+      message:
+        summary ||
+        `Cron job "${params.jobName}" failed: ${params.result.error ?? "unknown error"}. Details in thread.`,
+      detailsMessage,
+    };
+  }
+  return {
+    message:
+      summary ||
+      `Cron job "${params.jobName}" completed without a scheduled report summary. Details in thread.`,
+    detailsMessage,
+  };
+}
+
 function omitExplicitHeartbeatDestination(
   heartbeat: AgentDefaultsConfig["heartbeat"] | undefined,
 ): AgentDefaultsConfig["heartbeat"] | undefined {
@@ -542,8 +581,10 @@ export function buildGatewayCronService(params: {
           delivery: deliveryTrace,
         };
       }
-      const shouldAnnounce =
-        plan.mode === "announce" && typeof result.summary === "string" && result.summary.trim();
+      const threadedReport = plan.presentation?.mode === "threaded_report";
+      const shouldAnnounce = threadedReport
+        ? plan.mode === "announce"
+        : plan.mode === "announce" && typeof result.summary === "string" && result.summary.trim();
       if (!shouldAnnounce) {
         return {
           ...result,
@@ -552,10 +593,20 @@ export function buildGatewayCronService(params: {
           delivery: deliveryTrace,
         };
       }
-      const message = isCommandCronJob(job)
-        ? redactCronCommandSummaryForExternalDelivery(result.summary)
-        : result.summary;
-      if (typeof message !== "string") {
+      const unredactedDeliveryPayload: { message?: string; detailsMessage?: string } = threadedReport
+        ? buildCronThreadedReportDeliveryPayload({ jobName: job.name, result })
+        : { message: result.summary };
+      const deliveryPayload = isCommandCronJob(job)
+        ? {
+            message: redactCronCommandSummaryForExternalDelivery(
+              unredactedDeliveryPayload.message,
+            ),
+            detailsMessage: redactCronCommandSummaryForExternalDelivery(
+              unredactedDeliveryPayload.detailsMessage,
+            ),
+          }
+        : unredactedDeliveryPayload;
+      if (typeof deliveryPayload.message !== "string") {
         return {
           ...result,
           deliveryAttempted: false,
@@ -576,7 +627,8 @@ export function buildGatewayCronService(params: {
             accountId: plan.accountId,
             sessionKey: resolveCronDeliverySessionKey(job),
           },
-          message,
+          message: deliveryPayload.message,
+          detailsMessage: deliveryPayload.detailsMessage,
           abortSignal: abortSignal ?? new AbortController().signal,
         });
         return {
@@ -737,6 +789,8 @@ export function buildGatewayCronService(params: {
             status: evt.status,
             error: evt.error,
             summary: evt.summary,
+            reportDetails: evt.reportDetails,
+            reportEnvelopeError: evt.reportEnvelopeError,
             diagnostics: evt.diagnostics,
             delivered: evt.delivered,
             deliveryStatus: evt.deliveryStatus,

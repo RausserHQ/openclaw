@@ -195,7 +195,11 @@ vi.mock("../process/supervisor/index.js", () => ({
 }));
 
 import type { CronJob } from "../cron/types.js";
-import { buildGatewayCronService, fireOnExitJob } from "./server-cron.js";
+import {
+  buildCronThreadedReportDeliveryPayload,
+  buildGatewayCronService,
+  fireOnExitJob,
+} from "./server-cron.js";
 
 function createCronConfig(name: string): OpenClawConfig {
   const tmpDir = path.join(os.tmpdir(), `${name}-${Date.now()}`);
@@ -283,6 +287,45 @@ function expectCleanupForSessionKeys(sessionKeys: string[]) {
   expect(options.sessionKeys).toEqual(sessionKeys);
   expect(options.onWarn).toBeTypeOf("function");
 }
+
+describe("buildCronThreadedReportDeliveryPayload", () => {
+  it("uses a compact invalid-envelope root before generic failure handling", () => {
+    const payload = buildCronThreadedReportDeliveryPayload({
+      jobName: "daily flight check",
+      result: {
+        status: "error",
+        error: "command exited with code 1",
+        summary: "stdout:\nplain report body\n\nstderr:\ndebug stderr",
+        reportDetails: "plain report body\n\nstderr:\ndebug stderr",
+        reportEnvelopeError: "scheduled report envelope must be valid JSON",
+      },
+    });
+
+    expect(payload.message).toBe(
+      'Cron job "daily flight check" produced an invalid scheduled report envelope. Details in thread.',
+    );
+    expect(payload.detailsMessage).toContain("plain report body");
+    expect(payload.detailsMessage).toContain("debug stderr");
+  });
+
+  it("uses deterministic envelope summaries for failed threaded reports", () => {
+    const payload = buildCronThreadedReportDeliveryPayload({
+      jobName: "daily flight check",
+      result: {
+        status: "error",
+        error: "command exited with code 1",
+        summary:
+          "LAX → YYZ daily flight check\nError: RuntimeError: CDP unavailable\nDetails in thread.",
+        reportDetails: "Traceback (most recent call last):\nRuntimeError: CDP unavailable",
+      },
+    });
+
+    expect(payload.message).toBe(
+      "LAX → YYZ daily flight check\nError: RuntimeError: CDP unavailable\nDetails in thread.",
+    );
+    expect(payload.detailsMessage).toContain("Traceback");
+  });
+});
 
 describe("buildGatewayCronService", () => {
   beforeEach(() => {

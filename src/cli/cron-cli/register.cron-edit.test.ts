@@ -76,6 +76,45 @@ describe("cron edit command", () => {
     );
   });
 
+  it("adds threaded report delivery presentation without changing other fields", async () => {
+    const program = createCronProgram();
+
+    await program.parseAsync(["edit", "job-1", "--threaded-report"], { from: "user" });
+
+    expect(callGatewayFromCli).toHaveBeenCalledWith(
+      "cron.update",
+      expect.objectContaining({ threadedReport: true }),
+      {
+        id: "job-1",
+        patch: {
+          delivery: {
+            mode: "announce",
+            presentation: { mode: "threaded_report" },
+          },
+        },
+      },
+    );
+  });
+
+  it("clears threaded report delivery presentation", async () => {
+    const program = createCronProgram();
+
+    await program.parseAsync(["edit", "job-1", "--no-threaded-report"], { from: "user" });
+
+    expect(callGatewayFromCli).toHaveBeenCalledWith(
+      "cron.update",
+      expect.objectContaining({ threadedReport: false }),
+      {
+        id: "job-1",
+        patch: {
+          delivery: {
+            presentation: null,
+          },
+        },
+      },
+    );
+  });
+
   it("does not set delivery mode to announce when disabling best-effort on payload edits", async () => {
     const program = createCronProgram();
 

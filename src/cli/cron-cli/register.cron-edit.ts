@@ -175,6 +175,11 @@ export function registerCronEditCommand(cron: Command) {
         "Do not fail job if delivery fails (also implies --announce when used alone)",
       )
       .option("--no-best-effort-deliver", "Fail job when delivery fails")
+      .option(
+        "--threaded-report",
+        "Post scheduled report summary at top level and full details as first threaded reply",
+      )
+      .option("--no-threaded-report", "Disable threaded scheduled-report presentation")
       .option("--failure-alert", "Enable failure alerts for this job")
       .option("--no-failure-alert", "Disable failure alerts for this job")
       .option("--failure-alert-after <n>", "Alert after N consecutive job errors")
@@ -385,8 +390,17 @@ export function registerCronEditCommand(cron: Command) {
             Boolean(opts.clearThreadId);
           const hasDeliveryAccount = typeof opts.account === "string" || Boolean(opts.clearAccount);
           const hasBestEffort = typeof opts.bestEffortDeliver === "boolean";
+          const hasThreadedReport = typeof opts.threadedReport === "boolean";
           if (hasWebhookDelivery && (hasDeliveryTarget || hasDeliveryAccount)) {
             throw new Error("--webhook cannot be combined with chat delivery options.");
+          }
+          if (opts.threadedReport === true) {
+            if (hasWebhookDelivery || opts.deliver === false) {
+              throw new Error("--threaded-report requires --announce delivery.");
+            }
+            if (hasDeliveryThreadId) {
+              throw new Error("--threaded-report cannot be combined with --thread-id.");
+            }
           }
           if (typeof opts.channel === "string" && opts.clearChannel) {
             throw new Error("Use --channel or --clear-channel, not both");
@@ -513,7 +527,13 @@ export function registerCronEditCommand(cron: Command) {
             patch.payload = payload;
           }
 
-          if (hasDeliveryModeFlag || hasDeliveryTarget || hasDeliveryAccount || hasBestEffort) {
+          if (
+            hasDeliveryModeFlag ||
+            hasDeliveryTarget ||
+            hasDeliveryAccount ||
+            hasBestEffort ||
+            hasThreadedReport
+          ) {
             const delivery: Record<string, unknown> = {};
             if (hasDeliveryModeFlag) {
               delivery.mode = hasWebhookDelivery
@@ -553,6 +573,14 @@ export function registerCronEditCommand(cron: Command) {
             }
             if (typeof opts.bestEffortDeliver === "boolean") {
               delivery.bestEffort = opts.bestEffortDeliver;
+            }
+            if (opts.threadedReport === true) {
+              delivery.presentation = { mode: "threaded_report" };
+              if (!delivery.mode) {
+                delivery.mode = "announce";
+              }
+            } else if (opts.threadedReport === false) {
+              delivery.presentation = null;
             }
             patch.delivery = delivery;
           }

@@ -356,9 +356,26 @@ function assertMainSessionAgentId(
   }
 }
 
-function assertDeliverySupport(job: Pick<CronJob, "sessionTarget" | "delivery">) {
+function assertDeliverySupport(job: Pick<CronJob, "sessionTarget" | "delivery" | "payload">) {
   if (!job.delivery) {
     return;
+  }
+  if (job.delivery.presentation?.mode === "threaded_report") {
+    if (job.payload.kind !== "command") {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" requires payload.kind="command"',
+      );
+    }
+    if (job.delivery.mode !== "announce") {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" requires delivery.mode="announce"',
+      );
+    }
+    if (job.delivery.threadId !== undefined && job.delivery.threadId !== null) {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" cannot be combined with delivery.threadId',
+      );
+    }
   }
   // No primary delivery and no completion webhook -- nothing to validate.
   if (job.delivery.mode === "none" && !job.delivery.completionDestination) {
@@ -1300,6 +1317,7 @@ function mergeCronDelivery(
     bestEffort: existing?.bestEffort,
     completionDestination: existing?.completionDestination,
     failureDestination: existing?.failureDestination,
+    presentation: existing?.presentation,
   };
 
   if (typeof patch.mode === "string") {
@@ -1344,6 +1362,10 @@ function mergeCronDelivery(
         ...(to ? { to } : {}),
       };
     }
+  }
+  if ("presentation" in patch) {
+    next.presentation =
+      patch.presentation?.mode === "threaded_report" ? { mode: "threaded_report" } : undefined;
   }
   if ("failureDestination" in patch) {
     if (patch.failureDestination == null) {

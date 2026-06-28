@@ -148,6 +148,11 @@ export function registerCronAddCommand(cron: Command) {
       .option("--thread-id <id>", "Telegram forum topic thread id")
       .option("--account <id>", "Channel account id for delivery (multi-account setups)")
       .option("--best-effort-deliver", "Do not fail the job if delivery fails", false)
+      .option(
+        "--threaded-report",
+        "Post scheduled report summary at top level and full details as first threaded reply",
+        false,
+      )
       .option("--json", "Output JSON", false)
       .action(
         async (
@@ -348,6 +353,17 @@ export function registerCronAddCommand(cron: Command) {
             if (hasWebhook && hasChatDeliveryTarget) {
               throw new Error("--webhook cannot be combined with chat delivery options.");
             }
+            if (opts.threadedReport) {
+              if (hasWebhook || hasNoDeliver) {
+                throw new Error("--threaded-report requires --announce delivery.");
+              }
+              if (hasThreadId) {
+                throw new Error("--threaded-report cannot be combined with --thread-id.");
+              }
+              if (!isIsolatedLikeSessionTarget || payload.kind !== "command") {
+                throw new Error("--threaded-report requires a non-main command job.");
+              }
+            }
 
             const deliveryMode = hasWebhook
               ? "webhook"
@@ -427,6 +443,7 @@ export function registerCronAddCommand(cron: Command) {
                     threadId: hasWebhook ? undefined : threadId,
                     accountId: hasWebhook ? undefined : accountId,
                     bestEffort: opts.bestEffortDeliver ? true : undefined,
+                    presentation: opts.threadedReport ? { mode: "threaded_report" } : undefined,
                   }
                 : undefined,
             };

@@ -43,6 +43,11 @@ export type CronMessageChannel = ChannelId;
 /** Delivery mode for job completion output. */
 export type CronDeliveryMode = "none" | "announce" | "webhook";
 
+/** Presentation modes for scheduled report delivery. */
+export type CronDeliveryPresentation = {
+  mode: "threaded_report";
+};
+
 /** Completion delivery configuration for cron job output. */
 export type CronDelivery = {
   mode: CronDeliveryMode;
@@ -57,6 +62,8 @@ export type CronDelivery = {
   completionDestination?: CronCompletionDestination;
   /** Separate destination for failure notifications. */
   failureDestination?: CronFailureDestination;
+  /** Optional scheduled-report presentation policy. */
+  presentation?: CronDeliveryPresentation;
 };
 
 /** Webhook completion destination used alongside chat delivery. */
@@ -89,6 +96,7 @@ export type CronDeliveryPatch = Partial<Pick<CronDelivery, "mode" | "bestEffort"
   accountId?: string | null;
   completionDestination?: CronCompletionDestination | null;
   failureDestination?: CronFailureDestinationPatch | null;
+  presentation?: CronDeliveryPresentation | null;
 };
 
 /** Execution outcome, separate from delivery outcome. */
@@ -190,6 +198,10 @@ export type CronRunOutcome = {
   /** Optional classifier for execution errors to guide fallback behavior. */
   errorKind?: "delivery-target";
   summary?: string;
+  /** Full scheduled-report body for threaded-report delivery. */
+  reportDetails?: string;
+  /** Deterministic envelope parse/validation error shown in the root summary. */
+  reportEnvelopeError?: string;
   sessionId?: string;
   sessionKey?: string;
   diagnostics?: CronRunDiagnostics;

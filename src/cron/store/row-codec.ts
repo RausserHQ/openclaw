@@ -113,6 +113,9 @@ function mergeFailureDestinationProjection(
             ...(projectedJob.delivery.completionDestination
               ? { completionDestination: projectedJob.delivery.completionDestination }
               : {}),
+            ...(projectedJob.delivery.presentation
+              ? { presentation: projectedJob.delivery.presentation }
+              : {}),
           }
         : {};
   const nextFailureDestination = isRecord(delivery.failureDestination)
@@ -239,10 +242,23 @@ export function scheduleFromRow(row: CronJobRow): CronSchedule | null {
   return null;
 }
 
+function readDeliveryPresentationFromJobJson(
+  row: CronJobRow,
+): NonNullable<CronJob["delivery"]>["presentation"] {
+  const configJob = parseJsonObject<Record<string, unknown>>(row.job_json, {});
+  const delivery = isRecord(configJob.delivery) ? configJob.delivery : undefined;
+  const presentation = isRecord(delivery?.presentation) ? delivery.presentation : undefined;
+  return presentation?.mode === "threaded_report" ? { mode: "threaded_report" } : undefined;
+}
+
 function rowToCronJob(row: CronJobRow): CronJob | null {
   const schedule = scheduleFromRow(row);
   const payload = payloadFromRow(row);
   const delivery = deliveryFromRow(row);
+  const deliveryPresentation = readDeliveryPresentationFromJobJson(row);
+  if (delivery && deliveryPresentation) {
+    delivery.presentation = deliveryPresentation;
+  }
   const failureAlert = failureAlertFromRow(row);
   const trigger = triggerFromRow(row);
   if (!schedule || !payload) {

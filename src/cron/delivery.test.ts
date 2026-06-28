@@ -128,6 +128,22 @@ describe("resolveCronDeliveryPlan", () => {
     expect(plan.threadId).toBe("99");
   });
 
+  it("carries threaded-report presentation in announce delivery plan", () => {
+    const plan = resolveCronDeliveryPlan(
+      makeCronJob({
+        delivery: {
+          mode: "announce",
+          channel: "slack",
+          to: "COPENCLAW",
+          presentation: { mode: "threaded_report" },
+        },
+      }),
+    );
+    expect(plan.mode).toBe("announce");
+    expect(plan.presentation).toEqual({ mode: "threaded_report" });
+    expect(plan.threadId).toBeUndefined();
+  });
+
   it("uses a provider-prefixed announce target as the channel when channel is last", () => {
     const plan = resolveCronDeliveryPlan(
       makeCronJob({

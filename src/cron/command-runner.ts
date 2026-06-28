@@ -1,4 +1,5 @@
 import { finiteSecondsToTimerSafeMilliseconds } from "@openclaw/normalization-core/number-coercion";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { runCommandWithTimeout } from "../process/exec.js";
 import {
   buildCronCommandSummary,
@@ -21,6 +22,62 @@ function secondsToMs(value: number | undefined): number | undefined {
 
 function formatCommand(argv: string[]): string {
   return argv.map((arg) => JSON.stringify(arg)).join(" ");
+}
+
+function trimOutput(value: string): string | undefined {
+  return normalizeOptionalString(value);
+}
+
+function appendStderrToReportDetails(params: {
+  details: string | undefined;
+  stderr: string;
+  preservedStderrLines?: string[];
+}): string | undefined {
+  const stderr = buildCronCommandSummary({
+    stdout: "",
+    stderr: params.stderr,
+    preservedStderrLines: params.preservedStderrLines,
+  });
+  if (!stderr) {
+    return params.details;
+  }
+  if (!params.details) {
+    return `stderr:\n${stderr}`;
+  }
+  return `${params.details}\n\nstderr:\n${stderr}`;
+}
+
+type ScheduledReportEnvelope = {
+  summary?: string;
+  details?: string;
+  error?: string;
+};
+
+function parseScheduledReportEnvelope(stdout: string): ScheduledReportEnvelope {
+  const trimmed = trimOutput(stdout);
+  if (!trimmed) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { details: trimmed, error: "scheduled report envelope must be valid JSON" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { details: trimmed, error: "scheduled report envelope must be a JSON object" };
+  }
+  const record = parsed as Record<string, unknown>;
+  const summary = trimOutput(typeof record.summary === "string" ? record.summary : "");
+  const details = trimOutput(typeof record.details === "string" ? record.details : "");
+  if (!summary || !details) {
+    return {
+      details: trimmed,
+      error:
+        'scheduled report envelope must include non-empty string fields "summary" and "details"',
+    };
+  }
+  return { summary, details };
 }
 
 function commandErrorMessage(params: {
@@ -116,12 +173,28 @@ export async function runCronCommandJob(params: {
       result.termination !== "no-output-timeout" &&
       result.termination !== "signal";
     const status: CronRunStatus = ok ? "ok" : "error";
-    const summary = buildCronCommandSummary({
+    const rawSummary = buildCronCommandSummary({
       stdout: result.stdout,
       stderr: result.stderr,
       preservedStdoutLines: result.preservedStdoutLines,
       preservedStderrLines: result.preservedStderrLines,
     });
+    const threadedReport = params.job.delivery?.presentation?.mode === "threaded_report";
+    const reportEnvelope = threadedReport ? parseScheduledReportEnvelope(result.stdout) : {};
+    const summary = threadedReport && reportEnvelope.summary ? reportEnvelope.summary : rawSummary;
+    const reportDetails = threadedReport
+      ? appendStderrToReportDetails({
+          details:
+            reportEnvelope.details ??
+            buildCronCommandSummary({
+              stdout: result.stdout,
+              stderr: "",
+              preservedStdoutLines: result.preservedStdoutLines,
+            }),
+          stderr: result.stderr,
+          preservedStderrLines: result.preservedStderrLines,
+        })
+      : undefined;
     const error = ok
       ? undefined
       : commandErrorMessage({
@@ -133,6 +206,8 @@ export async function runCronCommandJob(params: {
       status,
       ...(error ? { error } : {}),
       ...(summary ? { summary } : {}),
+      ...(reportDetails ? { reportDetails } : {}),
+      ...(reportEnvelope.error ? { reportEnvelopeError: reportEnvelope.error } : {}),
       diagnostics: buildDiagnostics({
         command,
         status,

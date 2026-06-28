@@ -270,6 +270,84 @@ describe("applyJobPatch", () => {
     expect(job.delivery?.accountId).toBeUndefined();
   });
 
+  it("preserves threaded-report presentation on compatible announce delivery", () => {
+    const job = createIsolatedAgentTurnJob(
+      "job-threaded-report",
+      {
+        mode: "announce",
+        channel: "slack",
+        to: "COPENCLAW",
+      },
+      { payload: { kind: "command", argv: ["node", "report.js"] } },
+    );
+
+    applyJobPatch(job, {
+      delivery: { presentation: { mode: "threaded_report" } },
+    });
+
+    expect(job.delivery).toMatchObject({
+      mode: "announce",
+      channel: "slack",
+      to: "COPENCLAW",
+      presentation: { mode: "threaded_report" },
+    });
+  });
+
+  it("rejects threaded-report presentation with explicit delivery.threadId", () => {
+    const job = createIsolatedAgentTurnJob(
+      "job-thread-conflict",
+      {
+        mode: "announce",
+        channel: "slack",
+        to: "COPENCLAW",
+        threadId: "123.456",
+      },
+      { payload: { kind: "command", argv: ["node", "report.js"] } },
+    );
+
+    expect(() =>
+      applyJobPatch(job, {
+        delivery: { presentation: { mode: "threaded_report" } },
+      }),
+    ).toThrow(/cannot be combined with delivery\.threadId/);
+  });
+
+  it("rejects threaded-report presentation outside announce delivery", () => {
+    const job = createIsolatedAgentTurnJob(
+      "job-thread-webhook",
+      {
+        mode: "announce",
+        channel: "slack",
+        to: "COPENCLAW",
+      },
+      { payload: { kind: "command", argv: ["node", "report.js"] } },
+    );
+
+    expect(() =>
+      applyJobPatch(job, {
+        delivery: {
+          mode: "webhook",
+          to: "https://example.invalid/cron",
+          presentation: { mode: "threaded_report" },
+        },
+      }),
+    ).toThrow(/requires delivery\.mode="announce"/);
+  });
+
+  it("rejects threaded-report presentation for non-command jobs", () => {
+    const job = createIsolatedAgentTurnJob("job-thread-agent-turn", {
+      mode: "announce",
+      channel: "slack",
+      to: "COPENCLAW",
+    });
+
+    expect(() =>
+      applyJobPatch(job, {
+        delivery: { presentation: { mode: "threaded_report" } },
+      }),
+    ).toThrow(/requires payload\.kind="command"/);
+  });
+
   it("persists agentTurn payload.lightContext updates when editing existing jobs", () => {
     const job = createIsolatedAgentTurnJob("job-light-context", {
       mode: "announce",
