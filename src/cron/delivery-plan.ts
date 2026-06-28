@@ -7,7 +7,13 @@ import {
 } from "@openclaw/normalization-core/string-coerce";
 import type { CronFailureDestinationConfig } from "../config/types.cron.js";
 import { resolveTargetPrefixedChannel } from "../infra/outbound/channel-target-prefix.js";
-import type { CronDelivery, CronDeliveryMode, CronJob, CronMessageChannel } from "./types.js";
+import type {
+  CronDelivery,
+  CronDeliveryMode,
+  CronDeliveryPresentation,
+  CronJob,
+  CronMessageChannel,
+} from "./types.js";
 
 /** Normalized routing plan for a cron job's primary delivery behavior. */
 export type CronDeliveryPlan = {
@@ -17,6 +23,8 @@ export type CronDeliveryPlan = {
   threadId?: string | number;
   /** Explicit channel account id from the delivery config, if set. */
   accountId?: string;
+  /** Optional scheduled-report presentation policy. */
+  presentation?: CronDeliveryPresentation;
   source: "delivery";
   requested: boolean;
 };
@@ -81,6 +89,10 @@ export function resolveCronDeliveryPlan(job: CronJob): CronDeliveryPlan {
   const deliveryAccountId = normalizeOptionalString(
     (delivery as { accountId?: unknown } | undefined)?.accountId,
   );
+  const presentation =
+    delivery?.presentation?.mode === "threaded_report"
+      ? ({ mode: "threaded_report" } satisfies CronDeliveryPresentation)
+      : undefined;
   if (hasDelivery) {
     const resolvedMode = mode ?? "announce";
     const channel =
@@ -93,6 +105,7 @@ export function resolveCronDeliveryPlan(job: CronJob): CronDeliveryPlan {
       to,
       threadId: resolvedMode === "webhook" ? undefined : deliveryThreadId,
       accountId: deliveryAccountId,
+      ...(presentation ? { presentation } : {}),
       source: "delivery",
       requested: resolvedMode === "announce",
     };

@@ -33,6 +33,53 @@ function buildCommandSummary(params: { stdout: string; stderr: string }): string
   return stdout ?? stderr;
 }
 
+function appendStderrToReportDetails(params: {
+  details: string | undefined;
+  stderr: string;
+}): string | undefined {
+  const stderr = trimOutput(params.stderr);
+  if (!stderr) {
+    return params.details;
+  }
+  if (!params.details) {
+    return `stderr:\n${stderr}`;
+  }
+  return `${params.details}\n\nstderr:\n${stderr}`;
+}
+
+type ScheduledReportEnvelope = {
+  summary?: string;
+  details?: string;
+  error?: string;
+};
+
+function parseScheduledReportEnvelope(stdout: string): ScheduledReportEnvelope {
+  const trimmed = trimOutput(stdout);
+  if (!trimmed) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { details: trimmed, error: "scheduled report envelope must be valid JSON" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { details: trimmed, error: "scheduled report envelope must be a JSON object" };
+  }
+  const record = parsed as Record<string, unknown>;
+  const summary = trimOutput(typeof record.summary === "string" ? record.summary : "");
+  const details = trimOutput(typeof record.details === "string" ? record.details : "");
+  if (!summary || !details) {
+    return {
+      details: trimmed,
+      error:
+        'scheduled report envelope must include non-empty string fields "summary" and "details"',
+    };
+  }
+  return { summary, details };
+}
+
 function commandErrorMessage(params: {
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -125,7 +172,16 @@ export async function runCronCommandJob(params: {
       result.termination !== "no-output-timeout" &&
       result.termination !== "signal";
     const status: CronRunStatus = ok ? "ok" : "error";
-    const summary = buildCommandSummary({ stdout: result.stdout, stderr: result.stderr });
+    const rawSummary = buildCommandSummary({ stdout: result.stdout, stderr: result.stderr });
+    const threadedReport = params.job.delivery?.presentation?.mode === "threaded_report";
+    const reportEnvelope = threadedReport ? parseScheduledReportEnvelope(result.stdout) : {};
+    const summary = threadedReport && reportEnvelope.summary ? reportEnvelope.summary : rawSummary;
+    const reportDetails = threadedReport
+      ? appendStderrToReportDetails({
+          details: reportEnvelope.details ?? rawSummary,
+          stderr: result.stderr,
+        })
+      : undefined;
     const error = ok
       ? undefined
       : commandErrorMessage({
@@ -137,6 +193,8 @@ export async function runCronCommandJob(params: {
       status,
       ...(error ? { error } : {}),
       ...(summary ? { summary } : {}),
+      ...(reportDetails ? { reportDetails } : {}),
+      ...(reportEnvelope.error ? { reportEnvelopeError: reportEnvelope.error } : {}),
       diagnostics: buildDiagnostics({
         command,
         status,

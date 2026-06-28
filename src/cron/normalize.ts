@@ -301,6 +301,23 @@ function coercePayload(payload: UnknownRecord) {
   return next;
 }
 
+function coerceDeliveryPresentation(value: unknown): UnknownRecord | null {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return normalizeOptionalLowercaseString(value) === "threaded_report"
+      ? { mode: "threaded_report" }
+      : null;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  return normalizeOptionalLowercaseString(value.mode) === "threaded_report"
+    ? { mode: "threaded_report" }
+    : null;
+}
+
 function coerceDelivery(delivery: UnknownRecord) {
   const next: UnknownRecord = { ...delivery };
   const parsed = parseDeliveryInput(delivery);
@@ -361,6 +378,16 @@ function coerceDelivery(delivery: UnknownRecord) {
       } else {
         delete next.completionDestination;
       }
+    }
+  }
+  if ("presentation" in next) {
+    const presentation = coerceDeliveryPresentation(next.presentation);
+    if (presentation) {
+      next.presentation = presentation;
+    } else if (next.presentation === null) {
+      next.presentation = null;
+    } else {
+      delete next.presentation;
     }
   }
   return next;

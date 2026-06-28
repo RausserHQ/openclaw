@@ -18,6 +18,8 @@ export type CronRunLogEntry = {
   error?: string;
   errorReason?: FailoverReason;
   summary?: string;
+  reportDetails?: string;
+  reportEnvelopeError?: string;
   diagnostics?: CronRunDiagnostics;
   delivered?: boolean;
   deliveryStatus?: CronDeliveryStatus;
