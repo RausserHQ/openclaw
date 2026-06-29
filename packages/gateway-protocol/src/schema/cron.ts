@@ -359,6 +359,18 @@ const CronDeliveryPatchSharedProperties = {
   failureDestination: Type.Optional(Type.Union([CronFailureDestinationPatchSchema, Type.Null()])),
 };
 
+const CronDeliveryPresentationSchema = Type.Object(
+  {
+    mode: Type.Literal("threaded_report"),
+  },
+  { additionalProperties: false },
+);
+
+const CronDeliveryPresentationPatchSchema = Type.Union([
+  CronDeliveryPresentationSchema,
+  Type.Null(),
+]);
+
 const CronDeliveryNoopSchema = Type.Object(
   {
     mode: Type.Literal("none"),
@@ -372,6 +384,7 @@ const CronDeliveryAnnounceSchema = Type.Object(
   {
     mode: Type.Literal("announce"),
     ...CronDeliverySharedProperties,
+    presentation: Type.Optional(CronDeliveryPresentationSchema),
     completionDestination: Type.Optional(CronCompletionDestinationSchema),
     to: Type.Optional(NonBlankString),
   },
@@ -401,6 +414,7 @@ export const CronDeliveryPatchSchema = Type.Object(
       Type.Union([Type.Literal("none"), Type.Literal("announce"), Type.Literal("webhook")]),
     ),
     ...CronDeliveryPatchSharedProperties,
+    presentation: Type.Optional(CronDeliveryPresentationPatchSchema),
     completionDestination: Type.Optional(
       Type.Union([CronCompletionDestinationSchema, Type.Null()]),
     ),

@@ -219,6 +219,45 @@ describe("cron protocol validators", () => {
     ).toBe(true);
   });
 
+  it("accepts threaded scheduled-report presentation on announce delivery", () => {
+    expect(
+      validateCronAddParams({
+        ...minimalAddParams,
+        delivery: {
+          mode: "announce",
+          channel: "slack",
+          to: "C123",
+          presentation: { mode: "threaded_report" },
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      validateCronUpdateParams({
+        id: "job-1",
+        patch: {
+          delivery: {
+            mode: "announce",
+            channel: "slack",
+            to: "C123",
+            presentation: { mode: "threaded_report" },
+          },
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      validateCronUpdateParams({
+        id: "job-1",
+        patch: {
+          delivery: {
+            presentation: null,
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("accepts nullable delivery clears on update params", () => {
     expect(
       validateCronUpdateParams({
