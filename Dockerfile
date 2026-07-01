@@ -190,6 +190,35 @@ COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
 
+# Homelab Julia uses Henrik Rexed's canonical hook-based OpenClaw OTel plugin.
+# The deployed operator's spec.plugins path installs ClawHub strings only, so bake
+# the package into the runtime image without adding it to OpenClaw's workspace
+# dependency graph, typecheck surface, shrinkwrap, or release package.
+ARG OPENCLAW_OTEL_OBSERVABILITY_PLUGIN_TARBALL="https://github.com/henrikrexed/openclaw-observability-plugin/archive/bcb9c66c3a940e1ac3bbabc866d010b110ce12f9.tar.gz"
+RUN set -eux; \
+    tmp="$(mktemp -d)"; \
+    npm install --prefix "$tmp" --no-save --package-lock=false --omit=dev --ignore-scripts --no-audit --no-fund "$OPENCLAW_OTEL_OBSERVABILITY_PLUGIN_TARBALL"; \
+    src="$tmp/node_modules"; dst="/app/node_modules"; \
+    find "$src" -mindepth 1 -maxdepth 1 -type d | while read -r entry; do \
+      base="$(basename "$entry")"; \
+      case "$base" in \
+        @*) \
+          mkdir -p "$dst/$base"; \
+          find "$entry" -mindepth 1 -maxdepth 1 -type d | while read -r scoped_entry; do \
+            scoped_base="$(basename "$scoped_entry")"; \
+            if [ ! -e "$dst/$base/$scoped_base" ]; then cp -a "$scoped_entry" "$dst/$base/"; fi; \
+          done; \
+          ;; \
+        *) \
+          if [ ! -e "$dst/$base" ]; then cp -a "$entry" "$dst/"; fi; \
+          ;; \
+      esac; \
+    done; \
+    rm -rf "$tmp"; \
+    node -e "const {createRequire}=require('node:module'); const fs=require('node:fs'); const path=require('node:path'); const pluginRoot='/app/node_modules/@henrikrexed/openclaw-otel-observability'; const r=createRequire(path.join(pluginRoot,'package.json')); const p=r('./package.json'); if (p.name !== '@henrikrexed/openclaw-otel-observability' || p.version !== '0.7.0') process.exit(1); for (const dep of Object.keys(p.dependencies||{})) r.resolve(dep); const codexManifest='/app/extensions/codex/package.json'; if (fs.existsSync(codexManifest)) { const cr=createRequire(codexManifest); const cp=cr.resolve('@openai/codex/package.json'); const c=JSON.parse(fs.readFileSync(cp,'utf8')); const bin=typeof c.bin==='string'?c.bin:c.bin&&c.bin.codex; if (!bin) throw new Error('@openai/codex bin missing'); fs.accessSync(path.resolve(path.dirname(cp), bin), fs.constants.X_OK); }" && \
+    test -f node_modules/@henrikrexed/openclaw-otel-observability/openclaw.plugin.json && \
+    chown -R node:node node_modules/@henrikrexed
+
 # Keep pnpm available in the runtime image for container-local workflows.
 # Use a shared Corepack home so the non-root `node` user does not need a
 # first-run network fetch when invoking pnpm.
