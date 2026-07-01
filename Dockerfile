@@ -190,6 +190,16 @@ COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
 
+# Homelab Julia uses Henrik Rexed's canonical hook-based OpenClaw OTel plugin.
+# The deployed operator's spec.plugins path installs ClawHub strings only, so bake
+# the package into the runtime image without adding it to OpenClaw's workspace
+# dependency graph, typecheck surface, shrinkwrap, or release package.
+ARG OPENCLAW_OTEL_OBSERVABILITY_PLUGIN_TARBALL="https://github.com/henrikrexed/openclaw-observability-plugin/archive/bcb9c66c3a940e1ac3bbabc866d010b110ce12f9.tar.gz"
+RUN npm install --no-save --package-lock=false --omit=dev --ignore-scripts --no-audit --no-fund "$OPENCLAW_OTEL_OBSERVABILITY_PLUGIN_TARBALL" && \
+    node -e "const p=require('./node_modules/@henrikrexed/openclaw-otel-observability/package.json'); if (p.name !== '@henrikrexed/openclaw-otel-observability' || p.version !== '0.7.0') process.exit(1);" && \
+    test -f node_modules/@henrikrexed/openclaw-otel-observability/openclaw.plugin.json && \
+    chown -R node:node node_modules/@henrikrexed
+
 # Keep pnpm available in the runtime image for container-local workflows.
 # Use a shared Corepack home so the non-root `node` user does not need a
 # first-run network fetch when invoking pnpm.
