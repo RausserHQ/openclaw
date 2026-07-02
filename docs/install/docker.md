@@ -81,8 +81,9 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     reporting success with an unusable sandbox.
 
     The RausserHQ fork publishes fork images to `ghcr.io/rausserhq/openclaw`.
-    Inspect the digest for a published tag before pinning it in deployment
-    manifests:
+    The `:baseline` image tracks the reviewed `base/openclaw-2026.6.11`
+    upstream baseline branch. Inspect the digest for a published tag before
+    pinning it in deployment manifests:
 
     ```bash
     docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:baseline
@@ -94,6 +95,11 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     Use the reported `Digest:` value as
     `ghcr.io/rausserhq/openclaw@sha256:<digest>` when you need an immutable
     image reference.
+
+    Operator-managed plugin deployments should keep plugin installation
+    declarative. Declare observability or channel plugins in the operator's
+    `spec.plugins` list, then enable and configure them through OpenClaw config
+    (`openclaw.json` / `spec.config.raw`) instead of baking them into the image.
 
   </Step>
 
