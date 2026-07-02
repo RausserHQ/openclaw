@@ -167,25 +167,11 @@ function addSnapshotClosure(lockfile) {
   }
 }
 
-function addTargetLockfilePackages(lockfile) {
-  const packages = lockfile?.packages;
-  if (!packages) {
-    return;
-  }
-  for (const key of Object.keys(packages)) {
-    // `pnpm prune --offline` can keep hoisted production transitive packages
-    // that are not surfaced by `pnpm list --prod`, so seed every external
-    // target-compatible lockfile package into the BuildKit store cache.
-    addSpec(lockfile, normalizeLockfilePackageKey(key));
-  }
-}
-
 const lockfile = readLockfile();
 for (const root of parseListRoots()) {
   visitListNode(lockfile, root);
 }
 addImporterRoots(lockfile);
 addSnapshotClosure(lockfile);
-addTargetLockfilePackages(lockfile);
 
 process.stdout.write([...specs].toSorted((a, b) => a.localeCompare(b)).join("\n"));
