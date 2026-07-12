@@ -85,16 +85,15 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     repository's `package.json` version; the current fork baseline is upstream
     OpenClaw `2026.6.11`, so its first fork release tag is `v2026.6.11`.
     Branch names, `main`, `baseline`, and SHA tags are not supported production
-    image references. Inspect the digest for a published release tag before
-    pinning it in deployment manifests:
+    image references. Production GitOps manifests must select the release tag:
+    `ghcr.io/rausserhq/openclaw:v2026.6.11`. Inspect the resolved digest for
+    release evidence, provenance, or attestation verification only; do not use
+    `ghcr.io/rausserhq/openclaw@sha256:<digest>` as the declared production
+    selector.
 
     ```bash
     docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:v2026.6.11
     ```
-
-    Use the reported `Digest:` value as
-    `ghcr.io/rausserhq/openclaw@sha256:<digest>` when you need an immutable
-    image reference.
 
     Operator-managed plugin deployments should keep plugin installation
     declarative. Declare observability or channel plugins in the operator's

@@ -63,6 +63,19 @@ describe("resolveForkDockerRelease", () => {
     );
   });
 
+  it("documents SemVer tags as production selectors and digest references as evidence only", () => {
+    const docs = readFileSync("docs/install/docker.md", "utf8");
+
+    expect(docs).toContain("`ghcr.io/rausserhq/openclaw:v2026.6.11`");
+    expect(docs).toContain("release evidence, provenance, or attestation verification only");
+    expect(docs).toContain("do not use");
+    expect(docs).toContain("as the declared production");
+    expect(docs).not.toContain(
+      `Use the reported \`Digest:\` value as
+    \`ghcr.io/rausserhq/openclaw@sha256:<digest>\``,
+    );
+  });
+
   it("keeps the workflow tag-gated and collision-safe", () => {
     const workflow = readFileSync(".github/workflows/docker-publish.yml", "utf8");
 
