@@ -2,11 +2,8 @@ name: Publish Docker image
 
 on:
   push:
-    branches:
-      - main
-      - base/openclaw-2026.6.11
     tags:
-      - "rausser-*"
+      - "v*"
   workflow_dispatch:
 
 concurrency:
@@ -60,8 +57,8 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve image tags
-        id: tags
+      - name: Resolve immutable fork release metadata
+        id: release
         shell: bash
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
@@ -69,48 +66,22 @@ jobs:
           SOURCE_REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          tags=("${IMAGE_NAME}:sha-${GITHUB_SHA::12}")
-          if [[ "${SOURCE_REF}" == "refs/heads/main" ]]; then
-            tags+=("${IMAGE_NAME}:main")
-          fi
-          if [[ "${SOURCE_REF}" == "refs/heads/base/openclaw-2026.6.11" ]]; then
-            tags+=("${IMAGE_NAME}:baseline")
-          fi
-          if [[ "${SOURCE_REF}" == refs/tags/rausser-* ]]; then
-            tags+=("${IMAGE_NAME}:${SOURCE_REF_NAME}")
-          fi
-          {
-            echo "value<<EOF"
-            printf "%s\n" "${tags[@]}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
+          node scripts/resolve-fork-docker-release.mjs --github-output
 
-      - name: Resolve OCI labels
-        id: labels
+      - name: Reject existing release image tag
         shell: bash
         env:
-          SOURCE_REF: ${{ github.ref }}
-          SOURCE_REF_NAME: ${{ github.ref_name }}
+          IMAGE_TAG: ${{ steps.release.outputs.image_tag }}
         run: |
           set -euo pipefail
-          version="${GITHUB_SHA}"
-          if [[ "${SOURCE_REF}" == "refs/heads/main" ]]; then
-            version="main"
+          if inspection="$(docker buildx imagetools inspect "${IMAGE_TAG}" 2>&1)"; then
+            echo "::error::Refusing to replace existing immutable release image ${IMAGE_TAG}."
+            exit 1
           fi
-          if [[ "${SOURCE_REF}" == "refs/heads/base/openclaw-2026.6.11" ]]; then
-            version="baseline"
+          if ! grep -qiE 'not found|name unknown|manifest unknown' <<< "${inspection}"; then
+            echo "::error::Unable to confirm whether ${IMAGE_TAG} already exists: ${inspection}"
+            exit 1
           fi
-          if [[ "${SOURCE_REF}" == refs/tags/rausser-* ]]; then
-            version="${SOURCE_REF_NAME}"
-          fi
-          created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          {
-            echo "value<<EOF"
-            echo "org.opencontainers.image.revision=${GITHUB_SHA}"
-            echo "org.opencontainers.image.version=${version}"
-            echo "org.opencontainers.image.created=${created}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
 
       - name: Build and push image
         id: build
@@ -121,31 +92,23 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=rausser-openclaw-docker-amd64
           cache-to: type=gha,mode=max,scope=rausser-openclaw-docker-amd64
-          tags: ${{ steps.tags.outputs.value }}
-          labels: ${{ steps.labels.outputs.value }}
+          tags: ${{ steps.release.outputs.image_tag }}
+          labels: ${{ steps.release.outputs.labels }}
           push: true
 
       - name: Print published tags
         shell: bash
         env:
-          IMAGE_TAGS: ${{ steps.tags.outputs.value }}
+          IMAGE_TAG: ${{ steps.release.outputs.image_tag }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
           echo "Published image digest: ${IMAGE_DIGEST}"
-          echo "Published image tags:"
-          while IFS= read -r tag; do
-            [[ -n "${tag}" ]] || continue
-            echo "- ${tag}"
-          done <<< "${IMAGE_TAGS}"
+          echo "Published immutable release image: ${IMAGE_TAG}"
           {
             echo "### Published Docker image"
             echo
             echo "Digest: \`${IMAGE_DIGEST}\`"
             echo
-            echo "Tags:"
-            while IFS= read -r tag; do
-              [[ -n "${tag}" ]] || continue
-              echo "- \`${tag}\`"
-            done <<< "${IMAGE_TAGS}"
+            echo "Release image: \`${IMAGE_TAG}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
