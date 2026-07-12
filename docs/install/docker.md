@@ -80,21 +80,20 @@ Docker is **optional**. Use it only if you want a containerized gateway or to va
     incompatible, setup exits without changing sandbox configuration instead of
     reporting success with an unusable sandbox.
 
-    The RausserHQ fork publishes fork images to `ghcr.io/rausserhq/openclaw`.
-    The `:baseline` image tracks the reviewed `base/openclaw-2026.6.11`
-    upstream baseline branch. Inspect the digest for a published tag before
-    pinning it in deployment manifests:
+    The RausserHQ fork publishes immutable SemVer release images to
+    `ghcr.io/rausserhq/openclaw:vX.Y.Z`. The release tag must exactly match the
+    repository's `package.json` version; the current fork baseline is upstream
+    OpenClaw `2026.6.11`, so its first fork release tag is `v2026.6.11`.
+    Branch names, `main`, `baseline`, and SHA tags are not supported production
+    image references. Production GitOps manifests must select the release tag:
+    `ghcr.io/rausserhq/openclaw:v2026.6.11`. Inspect the resolved digest for
+    release evidence, provenance, or attestation verification only; do not use
+    `ghcr.io/rausserhq/openclaw@sha256:<digest>` as the declared production
+    selector.
 
     ```bash
-    docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:baseline
-
-    # The default-branch image is also available as :main after main publishes.
-    docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:main
+    docker buildx imagetools inspect ghcr.io/rausserhq/openclaw:v2026.6.11
     ```
-
-    Use the reported `Digest:` value as
-    `ghcr.io/rausserhq/openclaw@sha256:<digest>` when you need an immutable
-    image reference.
 
     Operator-managed plugin deployments should keep plugin installation
     declarative. Declare observability or channel plugins in the operator's
