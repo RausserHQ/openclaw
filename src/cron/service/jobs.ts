@@ -376,6 +376,11 @@ function assertDeliverySupport(job: Pick<CronJob, "sessionTarget" | "delivery" |
         'cron delivery.presentation.mode="threaded_report" cannot be combined with delivery.threadId',
       );
     }
+    if (resolveCronDeliveryPlan(job).channel !== "slack") {
+      throw new Error(
+        'cron delivery.presentation.mode="threaded_report" requires Slack announce delivery',
+      );
+    }
   }
   // No primary delivery and no completion webhook -- nothing to validate.
   if (job.delivery.mode === "none" && !job.delivery.completionDestination) {

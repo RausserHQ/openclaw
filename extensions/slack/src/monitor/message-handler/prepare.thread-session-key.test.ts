@@ -414,7 +414,7 @@ describe("thread-level session keys", () => {
     const expectedSessionKey = "agent:main:slack:channel:c0ahzfcas1k:thread:1777244692.409919";
     expect(root.sessionKey).toBe(expectedSessionKey);
     expect(followUp.sessionKey).toBe(expectedSessionKey);
-    expect(root.historyKey).toBe("C0AHZFCAS1K");
+    expect(root.historyKey).toBe(expectedSessionKey);
     expect(followUp.historyKey).toBe(expectedSessionKey);
     expect(new Set([root.sessionKey, followUp.sessionKey]).size).toBe(1);
   });
@@ -459,7 +459,7 @@ describe("thread-level session keys", () => {
     expect(rootMention.sessionKey).toBe(
       "agent:main:slack:channel:c0ahzfcas1k:thread:1777244692.409919",
     );
-    expect(rootMention.historyKey).toBe("C0AHZFCAS1K");
+    expect(rootMention.historyKey).toBe(rootMention.sessionKey);
     expect(urlFollowUp.historyKey).toBe(rootMention.sessionKey);
     expect(spawnedSubagentsByParent.size).toBe(1);
   });

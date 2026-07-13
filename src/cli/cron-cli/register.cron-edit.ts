@@ -177,7 +177,7 @@ export function registerCronEditCommand(cron: Command) {
       .option("--no-best-effort-deliver", "Fail job when delivery fails")
       .option(
         "--threaded-report",
-        "Post scheduled report summary at top level and full details as first threaded reply",
+        "Post a Slack scheduled-report summary at top level and full details as its first reply",
       )
       .option("--no-threaded-report", "Disable threaded scheduled-report presentation")
       .option("--failure-alert", "Enable failure alerts for this job")

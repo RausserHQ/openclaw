@@ -358,6 +358,44 @@ describe("slack prepareSlackMessage inbound contract", () => {
     expect(prepared.forcedReplyThreadTs).toBe("10.100");
   });
 
+  it("keeps pending channel history isolated by top-level root thread", async () => {
+    const slackCtx = createDefaultSlackCtx();
+    slackCtx.historyLimit = 5;
+
+    const skipped = await prepareMessageWith(
+      slackCtx,
+      createSlackAccount({ replyToMode: "off" }),
+      createSlackMessage({
+        channel: "C123",
+        channel_type: "channel",
+        ts: "10.000",
+        text: "unmentioned root one",
+      }),
+    );
+
+    expect(skipped).toBeNull();
+    const historyKeys = Array.from(slackCtx.channelHistories.keys());
+    expect(historyKeys).toHaveLength(1);
+    expect(historyKeys[0]).toContain(":thread:10.000");
+    expect(historyKeys[0]).not.toBe("C123");
+
+    const prepared = await prepareMessageWith(
+      slackCtx,
+      createSlackAccount({ replyToMode: "off" }),
+      createSlackMessage({
+        channel: "C123",
+        channel_type: "channel",
+        ts: "11.000",
+        text: "<@B1> mentioned root two",
+      }),
+    );
+
+    assertPrepared(prepared);
+    expect(prepared.ctxPayload.SessionKey).toContain(":thread:11.000");
+    expect(prepared.ctxPayload.Body).not.toContain("unmentioned root one");
+    expect(prepared.ctxPayload.InboundHistory).toEqual([]);
+  });
+
   it("prefers the channel root thread over Slack assistant context on channel replies", async () => {
     const prepared = await prepareMessageWith(
       createDefaultSlackCtx(),

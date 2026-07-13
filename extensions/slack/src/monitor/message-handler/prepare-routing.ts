@@ -288,7 +288,7 @@ export function resolveSlackRoutingContext(params: {
         });
   const sessionKey = threadKeys.sessionKey;
   const historyKey =
-    isThreadReply && ctx.threadHistoryScope === "thread" ? sessionKey : message.channel;
+    ctx.threadHistoryScope === "thread" && routedThreadId ? sessionKey : message.channel;
 
   return {
     route,

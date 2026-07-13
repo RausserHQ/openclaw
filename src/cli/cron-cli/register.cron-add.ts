@@ -150,7 +150,7 @@ export function registerCronAddCommand(cron: Command) {
       .option("--best-effort-deliver", "Do not fail the job if delivery fails", false)
       .option(
         "--threaded-report",
-        "Post scheduled report summary at top level and full details as first threaded reply",
+        "Post a Slack scheduled-report summary at top level and full details as its first reply",
         false,
       )
       .option("--json", "Output JSON", false)
@@ -362,6 +362,10 @@ export function registerCronAddCommand(cron: Command) {
               }
               if (!isIsolatedLikeSessionTarget || payload.kind !== "command") {
                 throw new Error("--threaded-report requires a non-main command job.");
+              }
+              const selectedChannel = normalizeOptionalString(opts.channel)?.toLowerCase();
+              if (selectedChannel && selectedChannel !== "last" && selectedChannel !== "slack") {
+                throw new Error("--threaded-report requires --channel slack.");
               }
             }
 

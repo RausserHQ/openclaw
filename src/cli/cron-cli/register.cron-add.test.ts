@@ -1,6 +1,7 @@
 // Cron add register tests cover create command option wiring.
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultRuntime } from "../../runtime.js";
 
 const callGatewayFromCli = vi.fn();
 
@@ -58,6 +59,70 @@ describe("cron add command", () => {
           mode: "announce",
           channel: "slack",
           to: "COPENCLAW",
+          presentation: { mode: "threaded_report" },
+        }),
+      }),
+    );
+  });
+
+  it("rejects threaded reports outside Slack before calling the gateway", async () => {
+    const errorSpy = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+    const exitSpy = vi.spyOn(defaultRuntime, "exit").mockImplementation((() => undefined) as never);
+    const program = createCronProgram();
+
+    await program.parseAsync(
+      [
+        "add",
+        "--name",
+        "Telegram report",
+        "--cron",
+        "0 7 * * *",
+        "--command",
+        "openclaw-telegram-flight-check",
+        "--channel",
+        "telegram",
+        "--to",
+        "-100123",
+        "--threaded-report",
+      ],
+      { from: "user" },
+    );
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("--threaded-report requires --channel slack."),
+    );
+    expect(callGatewayFromCli).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("accepts Slack-prefixed delivery targets with the default channel", async () => {
+    const program = createCronProgram();
+
+    await program.parseAsync(
+      [
+        "add",
+        "--name",
+        "Prefixed Slack report",
+        "--cron",
+        "0 7 * * *",
+        "--command",
+        "openclaw-slack-flight-check",
+        "--to",
+        "slack:COPENCLAW",
+        "--threaded-report",
+      ],
+      { from: "user" },
+    );
+
+    expect(callGatewayFromCli).toHaveBeenCalledWith(
+      "cron.add",
+      expect.objectContaining({ threadedReport: true }),
+      expect.objectContaining({
+        delivery: expect.objectContaining({
+          channel: "last",
+          to: "slack:COPENCLAW",
           presentation: { mode: "threaded_report" },
         }),
       }),

@@ -1,0 +1,118 @@
+name: Publish Docker image
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  IMAGE_NAME: ghcr.io/rausserhq/openclaw
+
+jobs:
+  publish:
+    name: Build and publish image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Pre-pull BuildKit image
+        shell: bash
+        env:
+          BUILDKIT_IMAGE: moby/buildkit:buildx-stable-1
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4; do
+            if docker pull "${BUILDKIT_IMAGE}"; then
+              exit 0
+            fi
+            if [[ "${attempt}" == "4" ]]; then
+              echo "::error::Failed to pull ${BUILDKIT_IMAGE} after ${attempt} attempts"
+              exit 1
+            fi
+            sleep_seconds=$((attempt * 10))
+            echo "BuildKit image pull failed; retrying in ${sleep_seconds}s (${attempt}/4)."
+            sleep "${sleep_seconds}"
+          done
+
+      - name: Set up Docker Builder
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve immutable fork release metadata
+        id: release
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          node scripts/resolve-fork-docker-release.mjs --github-output
+
+      - name: Reject existing release image tag
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.release.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if inspection="$(docker buildx imagetools inspect "${IMAGE_TAG}" 2>&1)"; then
+            echo "::error::Refusing to replace existing immutable release image ${IMAGE_TAG}."
+            exit 1
+          fi
+          if ! grep -qiE 'not found|name unknown|manifest unknown' <<< "${inspection}"; then
+            echo "::error::Unable to confirm whether ${IMAGE_TAG} already exists: ${inspection}"
+            exit 1
+          fi
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          # This fork owns Slack thread routing; retain its bundled runtime instead
+          # of relying on the version left on an instance PVC.
+          build-args: |
+            OPENCLAW_EXTENSIONS=slack
+          cache-from: type=gha,scope=rausser-openclaw-docker-amd64
+          cache-to: type=gha,mode=max,scope=rausser-openclaw-docker-amd64
+          tags: ${{ steps.release.outputs.image_tag }}
+          labels: ${{ steps.release.outputs.labels }}
+          push: true
+
+      - name: Print published tags
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.release.outputs.image_tag }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "Published image digest: ${IMAGE_DIGEST}"
+          echo "Published immutable release image: ${IMAGE_TAG}"
+          {
+            echo "### Published Docker image"
+            echo
+            echo "Digest: \`${IMAGE_DIGEST}\`"
+            echo
+            echo "Release image: \`${IMAGE_TAG}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -334,6 +334,24 @@ describe("applyJobPatch", () => {
     ).toThrow(/requires delivery\.mode="announce"/);
   });
 
+  it("rejects threaded-report presentation for non-Slack delivery", () => {
+    const job = createIsolatedAgentTurnJob(
+      "job-thread-telegram",
+      {
+        mode: "announce",
+        channel: "telegram",
+        to: "-100123",
+      },
+      { payload: { kind: "command", argv: ["node", "report.js"] } },
+    );
+
+    expect(() =>
+      applyJobPatch(job, {
+        delivery: { presentation: { mode: "threaded_report" } },
+      }),
+    ).toThrow(/requires Slack announce delivery/);
+  });
+
   it("rejects threaded-report presentation for non-command jobs", () => {
     const job = createIsolatedAgentTurnJob("job-thread-agent-turn", {
       mode: "announce",
